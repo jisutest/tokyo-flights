@@ -1,0 +1,13 @@
+{
+  "name": "tokyo-flights",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "서울(김포/인천) → 도쿄(하네다/나리타) 항공권 최저가 비교",
+  "scripts": {
+    "dev": "node dev-server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
