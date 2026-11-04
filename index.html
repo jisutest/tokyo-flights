@@ -85,6 +85,7 @@
 
   .notice { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 13px; background: var(--warn-soft); color: var(--warn); line-height: 1.5; }
   .error { background: #fef2f2; color: #b91c1c; }
+  .notice.info { background: var(--accent-soft); color: var(--accent); }
 
   /* ---------- 결과 ---------- */
   .summary { margin: 24px 0 12px; font-size: 15px; line-height: 1.6; }
@@ -102,6 +103,11 @@
   .meta { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
   .empty { color: var(--muted); font-size: 14px; margin-top: 12px; }
   .book { display: inline-block; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+  .links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .live { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+  .live:hover { color: var(--accent); }
+  .cta { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 600; color: #fff; background: var(--accent);
+    padding: 10px 16px; border-radius: 10px; text-decoration: none; }
   /* 항공사별 출발 시각표 */
   .sched { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }
   .sched-cap { font-size: 12px; color: var(--muted); }
@@ -347,7 +353,13 @@ $('f').addEventListener('submit', async (e) => {
     const r = await fetch('/api/compare?' + p);
     const data = await r.json();
     if (!r.ok) throw new Error(data.error + (data.detail ? ` (${data.detail})` : ''));
-    if (data.mock) showMsg('지금은 샘플 데이터예요. Vercel 환경변수에 TRAVELPAYOUTS_TOKEN을 넣으면 실제 가격이 나와요.');
+    const monthly = state.unit === 'month';
+    if (data.provider === 'serpapi') showMsg(data.query.returnAt
+      ? '실시간 Google 항공권 가격(왕복 합계)이에요. 오는 편 항공편은 각 카드의 "Google 항공권에서 보기"에서 골라요.'
+      : '실시간 Google 항공권 가격이에요.', false, 'info');
+    else if (data.realtime && monthly) showMsg('"한 달" 검색은 실시간 조회가 안 돼서 수집된(캐시) 가격을 보여드려요. 실시간 가격은 "특정일"로 검색하세요.');
+    else if (data.mock) showMsg('지금은 샘플 데이터예요. Vercel 환경변수에 SERPAPI_KEY(실시간) 또는 TRAVELPAYOUTS_TOKEN을 넣으면 실제 가격이 나와요.');
+    else if (data.fallback === 'month') showMsg('고른 날짜로 수집된 가격이 없어서 같은 달의 다른 날짜 가격을 보여드려요. 날짜를 꼭 확인하세요. 고른 날짜 그대로 보려면 카드의 "Aviasales 실시간 검색"을 눌러 보세요.');
     render(data);
   } catch (err) {
     showMsg(err.message || '오류가 발생했어요.', true);
@@ -356,8 +368,9 @@ $('f').addEventListener('submit', async (e) => {
   }
 });
 
-function showMsg(text, isError) {
-  $('msg').innerHTML = text ? `<p class="notice ${isError ? 'error' : ''}">${esc(text)}</p>` : '';
+function showMsg(text, isError, kind) {
+  const cls = isError ? 'error' : kind === 'info' ? 'info' : '';
+  $('msg').innerHTML = text ? `<p class="notice ${cls}">${esc(text)}</p>` : '';
 }
 
 // "2026-11-20" → "11/20(금)" (시간대 변환 없이 날짜 문자열 그대로)
@@ -405,19 +418,27 @@ function schedule(tickets) {
   </div>`;
 }
 
+// Aviasales 실시간 검색 링크 (서버가 특정일 검색일 때만 만들어 줌)
+const liveLink = (url, cls = 'live') =>
+  url ? `<a class="${cls}" href="${esc(url)}" target="_blank" rel="noopener">Aviasales 실시간 검색 →</a>` : '';
+
 // 결과가 비었을 때 이유 안내 (실제 데이터면 조회별 건수/에러를 같이 보여줌)
-function emptyMessage({ query, sources }) {
+function emptyMessage({ query, sources, citySearchUrl, provider }) {
   const tips = '날짜를 "한 달"로 넓히거나, 시간 범위를 넓히거나, 직항만 해제해 보세요.';
   let why = '';
   if (sources?.length) {
     const failed = sources.filter((s) => s.error);
     const total = sources.reduce((n, s) => n + (s.count || 0), 0);
     if (failed.length) why = `조회 ${sources.length}건 중 ${failed.length}건 실패 (${esc(failed[0].error)}).`;
-    else if (!total) why = '가격 데이터 제공처(Aviasales)에 이 날짜·방향으로 수집된 가격이 아예 없어요.';
+    else if (!total && provider === 'serpapi') why = 'Google 항공권에도 이 날짜·조건의 항공편이 없어요.';
+    else if (!total) why = '이 사이트는 다른 사람들이 최근 검색한 가격(캐시)만 보여줘서, 이 날짜·방향은 아직 수집된 가격이 없어요.';
     else why = `수집된 가격 ${total}건이 있지만 선택한 조건(직항·시간)에 맞는 게 없어요.`;
     if (query?.dir === 'tokyo' && !failed.length) why += ' 도쿄 출발은 서울 출발보다 수집된 가격이 적은 편이에요.';
   }
-  return `<p class="summary">해당 조건으로 수집된 가격이 없어요. ${why}<br>${tips}</p>`;
+  const live = citySearchUrl
+    ? `<br>${liveLink(citySearchUrl, 'cta')}<br><small style="color:var(--muted)">Aviasales는 지금 이 순간 항공사에 직접 조회해서 결과가 나와요.</small>`
+    : '';
+  return `<p class="summary">해당 조건으로 수집된 가격이 없어요. ${why}<br>${tips}${live}</p>`;
 }
 
 function render(data) {
@@ -432,7 +453,7 @@ function render(data) {
     const t = r.tickets[0];
     const isBest = r === best;
     if (!t) return `<div class="card"><div class="route">${r.fromName} → ${r.toName}<small>${r.from}–${r.to}</small></div>
-      <p class="empty">수집된 가격 없음</p></div>`;
+      <p class="empty">수집된 가격 없음</p>${liveLink(r.searchUrl)}</div>`;
     return `<div class="card ${isBest ? 'best' : ''}">
       ${isBest ? '<span class="badge">최저가</span>' : ''}
       <div class="route">${r.fromName} → ${r.toName}<small>${r.from}–${r.to}</small></div>
@@ -441,9 +462,13 @@ function render(data) {
       <div class="meta">
         ${esc(airline(t.airline))} ${esc(t.airline)}${esc(t.flightNumber)} · ${stops(t.transfers)}<br>
         가는 편 ${fmtDate(t.departAt)}${arrival(t.departAt, t.duration)}
-        ${t.returnAt ? `<br>오는 편 ${fmtDate(t.returnAt)}${arrival(t.returnAt, t.returnDuration)}` : ''}
+        ${t.returnAt ? `<br>오는 편 ${fmtDate(t.returnAt)}${arrival(t.returnAt, t.returnDuration)}`
+          : query.returnAt ? `<br>오는 편 ${fmtDay(query.returnAt)} · 시간은 Google 항공권에서 선택` : ''}
       </div>
-      ${t.link ? `<a class="book" href="${esc(t.link)}" target="_blank" rel="noopener">예약 페이지 보기 →</a>` : ''}
+      <div class="links">
+        ${t.link ? `<a class="book" href="${esc(t.link)}" target="_blank" rel="noopener">${data.provider === 'serpapi' ? 'Google 항공권에서 보기' : '예약 페이지 보기'} →</a>` : ''}
+        ${liveLink(r.searchUrl)}
+      </div>
       ${schedule(r.tickets)}
     </div>`;
   }).join('');

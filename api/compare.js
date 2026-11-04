@@ -1,4 +1,5 @@
-import { getLivePrices, getMockPrices } from '../lib/flights.js';
+import { getLivePrices, getMockPrices, searchUrl } from '../lib/flights.js';
+import { getSerpPrices } from '../lib/serpapi.js';
 import { parseRange } from '../lib/timefilter.js';
 
 const DATE_RE = /^\d{4}-\d{2}(-\d{2})?$/;
@@ -27,21 +28,53 @@ export default async function handler(req, res) {
 
   const q = { dir, departAt, returnAt: returnAt || null, direct, depRange, arrRange, retDepRange, retArrRange };
   const token = process.env.TRAVELPAYOUTS_TOKEN;
+  const marker = process.env.TRAVELPAYOUTS_MARKER;
+
+  // 노선별 + 도시 단위 Aviasales 실시간 검색 링크 (캐시에 가격이 없을 때 바로 가볼 수 있게)
+  const links = (routes) => routes.map((r) => ({ ...r, searchUrl: searchUrl(r.from, r.to, departAt, returnAt, marker) }));
+  const [cityFrom, cityTo] = dir === 'tokyo' ? ['TYO', 'SEL'] : ['SEL', 'TYO'];
+  const citySearchUrl = searchUrl(cityFrom, cityTo, departAt, returnAt, marker);
+
+  // 실시간 조회(SerpApi)는 날짜가 특정일일 때만 가능. 한 달 검색은 아래 캐시 데이터로.
+  const serpKey = process.env.SERPAPI_KEY;
+  const exactDates = departAt.length === 10 && (!returnAt || returnAt.length === 10);
+  const realtime = Boolean(serpKey);
 
   try {
-    if (!token) {
-      return send(res, 200, { mock: true, query: q, routes: getMockPrices(q) });
+    if (serpKey && exactDates) {
+      const { routes, sources } = await getSerpPrices(q, serpKey);
+      // 같은 검색은 Vercel CDN에 10분 캐시 (SerpApi 크레딧 절약)
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
+      return send(res, 200, { mock: false, provider: 'serpapi', query: q, routes: links(routes), sources, citySearchUrl });
     }
-    const { routes, sources } = await getLivePrices(q, token, process.env.TRAVELPAYOUTS_MARKER);
+    if (!token) {
+      return send(res, 200, { mock: true, provider: 'mock', realtime, query: q, routes: links(getMockPrices(q)), citySearchUrl });
+    }
+    let { routes, sources } = await getLivePrices(q, token, marker);
+
+    // 특정일 조합으로 수집된 가격이 하나도 없으면 같은 달 전체로 다시 조회
+    // (캐시 데이터라 정확한 날짜 조합은 비어 있는 경우가 많음, 특히 도쿄 출발)
+    let fallback = null;
+    if (departAt.length === 10 && routes.every((r) => !r.tickets.length)) {
+      const mq = { ...q, departAt: departAt.slice(0, 7), returnAt: returnAt ? returnAt.slice(0, 7) : null };
+      const monthly = await getLivePrices(mq, token, marker).catch(() => null);
+      if (monthly?.routes.some((r) => r.tickets.length)) {
+        routes = monthly.routes;
+        sources = monthly.sources;
+        fallback = 'month';
+      }
+    }
+
     // Vercel CDN에 10분 캐시 (API 호출량 절약)
     res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600');
     // sources: 조회별 원본 건수/에러 (결과가 비었을 때 원인 확인용)
-    return send(res, 200, { mock: false, query: q, routes, sources });
+    // fallback: 'month'면 요청한 날짜가 아니라 같은 달 다른 날짜의 가격
+    return send(res, 200, { mock: false, provider: 'travelpayouts', realtime, query: q, routes: links(routes), sources, fallback, citySearchUrl });
   } catch (err) {
     console.error(err);
     return send(res, 502, {
       error: '가격 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.',
-      detail: String(err?.message || err), // 예: "Travelpayouts 401" → 토큰 문제
+      detail: String(err?.message || err), // 예: "Travelpayouts 401" / "SerpApi: Invalid API key" → 키 문제
     });
   }
 }
