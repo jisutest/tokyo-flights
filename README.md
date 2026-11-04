@@ -5,7 +5,7 @@
 
 ```
 index.html          화면 (검색 폼 + 4개 노선 카드)
-api/compare.js      GET /api/compare?from=seoul|tokyo&depart=YYYY-MM[-DD]&return=...&direct=1&depFrom=6&depTo=12&arrFrom=...&arrTo=...
+api/compare.js      GET /api/compare?from=seoul|tokyo&depart=YYYY-MM[-DD]&return=...&direct=1&depFrom=6&depTo=12 … (가는 편 dep/arr, 오는 편 retDep/retArr + From/To)
 lib/flights.js      Travelpayouts 호출·노선별 정리, 토큰 없을 때 샘플 데이터
 lib/routes.js       노선/항공사 목록, 서울↔도쿄 방향 전환
 lib/timefilter.js   출발·도착 시각 범위 필터
