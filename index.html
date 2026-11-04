@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>도쿄 항공권 최저가</title>
-<meta name="description" content="김포·인천 → 하네다·나리타 4개 노선 최저가 한눈에 비교">
+<meta name="description" content="김포·인천 ↔ 하네다·나리타 4개 노선 최저가 한눈에 비교">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 <style>
   :root {
@@ -18,6 +18,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif; }
   main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
@@ -26,7 +27,25 @@
 
   form { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
     display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; }
-  label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+  label, .field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+
+  /* 두 손잡이 시간 범위 슬라이더 */
+  .full { grid-column: 1 / -1; }
+  .range-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .range-head b { color: var(--accent); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .range { position: relative; height: 28px; }
+  .range .track { position: absolute; left: 10px; right: 10px; top: 11px; height: 6px; border-radius: 3px; background: var(--line); }
+  .range .fill { position: absolute; top: 11px; height: 6px; border-radius: 3px; background: var(--accent); }
+  .range input { position: absolute; inset: 0; width: 100%; height: 28px; margin: 0; background: none;
+    -webkit-appearance: none; appearance: none; pointer-events: none; }
+  .range input::-webkit-slider-runnable-track { height: 28px; background: none; }
+  .range input::-moz-range-track { background: none; }
+  .range input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; cursor: grab; margin-top: 4px;
+    width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .range input::-moz-range-thumb { pointer-events: auto; cursor: grab;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .range input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ticks { display: flex; justify-content: space-between; padding: 0 4px; font-size: 11px; }
   input[type=date], input[type=month], select { font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -66,9 +85,15 @@
 <body>
 <main>
   <h1>✈️ 도쿄 항공권 최저가</h1>
-  <p class="sub">김포·인천 → 하네다·나리타 4개 노선을 한 번에 비교해요.</p>
+  <p class="sub" id="sub">김포·인천 → 하네다·나리타 4개 노선을 한 번에 비교해요.</p>
 
   <form id="f">
+    <label>출발지
+      <div class="seg" id="dir">
+        <button type="button" data-v="seoul" class="on">서울 출발</button>
+        <button type="button" data-v="tokyo">도쿄 출발</button>
+      </div>
+    </label>
     <label>여정
       <div class="seg" id="trip">
         <button type="button" data-v="oneway" class="on">편도</button>
@@ -82,7 +107,25 @@
       </div>
     </label>
     <label>출발일 <input id="depart" type="date" required></label>
-    <label id="retWrap" hidden>귀국일 <input id="ret" type="date"></label>
+    <label id="retWrap" hidden>돌아오는 날<input id="ret" type="date"></label>
+    <div class="field full">
+      <div class="range-head"><span>출발 시각 (가는 편)</span><b id="depLabel">전체</b></div>
+      <div class="range" id="dep">
+        <div class="track"></div><div class="fill"></div>
+        <input type="range" min="0" max="24" step="1" value="0" aria-label="출발 시각 시작">
+        <input type="range" min="0" max="24" step="1" value="24" aria-label="출발 시각 끝">
+      </div>
+      <div class="ticks"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
+    </div>
+    <div class="field full">
+      <div class="range-head"><span>도착 시각 (가는 편, 현지)</span><b id="arrLabel">전체</b></div>
+      <div class="range" id="arr">
+        <div class="track"></div><div class="fill"></div>
+        <input type="range" min="0" max="24" step="1" value="0" aria-label="도착 시각 시작">
+        <input type="range" min="0" max="24" step="1" value="24" aria-label="도착 시각 끝">
+      </div>
+      <div class="ticks"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
+    </div>
     <label class="check"><input id="direct" type="checkbox" checked> 직항만</label>
     <button class="submit" id="go">최저가 비교</button>
   </form>
@@ -100,7 +143,8 @@
 const AIRLINES = { KE:'대한항공', OZ:'아시아나', '7C':'제주항공', LJ:'진에어', TW:'티웨이', BX:'에어부산', RS:'에어서울',
   ZE:'이스타항공', YP:'에어프레미아', JL:'JAL', NH:'ANA', MM:'피치항공', ZG:'ZIPAIR', GK:'젯스타재팬', BC:'스카이마크', HD:'에어두' };
 const $ = (id) => document.getElementById(id);
-const state = { trip: 'oneway', unit: 'day' };
+const state = { dir: 'seoul', trip: 'oneway', unit: 'day' };
+
 const won = (n) => n.toLocaleString('ko-KR') + '원';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 
@@ -109,6 +153,14 @@ function fmtDate(iso) {
   const d = new Date(iso);
   const day = '일월화수목금토'[d.getDay()];
   return `${d.getMonth() + 1}/${d.getDate()}(${day}) ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+// 도착 시각 = 출발 + 소요시간(분). 서울·도쿄 모두 UTC+9라 출발 문자열의 시각을 그대로 씀.
+function arrival(t) {
+  const m = /T(\d{2}):(\d{2})/.exec(t.departAt || '');
+  if (!m || t.duration == null) return '';
+  const total = Number(m[1]) * 60 + Number(m[2]) + t.duration;
+  const days = Math.floor(total / 1440), mins = total % 1440;
+  return ` → ${pad(Math.floor(mins / 60))}:${pad(mins % 60)} 도착${days ? ` (+${days}일)` : ''}`;
 }
 const stops = (n) => (n ? `경유 ${n}회` : '직항');
 const airline = (c) => AIRLINES[c] || c;
@@ -122,6 +174,30 @@ const d2 = new Date(d1); d2.setDate(d2.getDate() + 3);
 $('depart').value = ymd(d1); $('ret').value = ymd(d2);
 $('depart').min = $('ret').min = ymd(today);
 
+// 두 손잡이 시간 범위 슬라이더. 반환값: () => [시작시, 끝시]
+function rangeSlider(id) {
+  const [lo, hi] = $(id).querySelectorAll('input');
+  const fill = $(id).querySelector('.fill');
+  const label = $(id + 'Label');
+  const update = (e) => {
+    // 두 손잡이가 겹쳐 잡히지 않게 최소 1시간 간격 유지
+    if (+lo.value >= +hi.value) {
+      if (e?.target === lo) lo.value = +hi.value - 1; else hi.value = +lo.value + 1;
+    }
+    const a = +lo.value, b = +hi.value;
+    // 손잡이 중심은 양 끝 10px 안쪽에서 움직임
+    fill.style.left = `calc(10px + (100% - 20px) * ${a / 24})`;
+    fill.style.width = `calc((100% - 20px) * ${(b - a) / 24})`;
+    label.textContent = a === 0 && b === 24 ? '전체' : `${pad(a)}:00 ~ ${pad(b)}:00`;
+  };
+  lo.addEventListener('input', update);
+  hi.addEventListener('input', update);
+  update();
+  return () => [+lo.value, +hi.value];
+}
+const depRange = rangeSlider('dep');
+const arrRange = rangeSlider('arr');
+
 function seg(id, key, onChange) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -130,6 +206,12 @@ function seg(id, key, onChange) {
     onChange?.();
   });
 }
+seg('dir', 'dir', () => {
+  $('sub').textContent = state.dir === 'tokyo'
+    ? '하네다·나리타 → 김포·인천 4개 노선을 한 번에 비교해요.'
+    : '김포·인천 → 하네다·나리타 4개 노선을 한 번에 비교해요.';
+  $('out').innerHTML = '';
+});
 seg('trip', 'trip', () => { $('retWrap').hidden = state.trip !== 'round'; });
 seg('unit', 'unit', () => {
   const type = state.unit === 'month' ? 'month' : 'date';
@@ -143,9 +225,13 @@ seg('unit', 'unit', () => {
 
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const p = new URLSearchParams({ depart: $('depart').value, direct: $('direct').checked ? '1' : '0' });
+  const p = new URLSearchParams({ from: state.dir, depart: $('depart').value, direct: $('direct').checked ? '1' : '0' });
+  for (const [key, get] of [['dep', depRange], ['arr', arrRange]]) {
+    const [a, b] = get();
+    if (a !== 0 || b !== 24) { p.set(key + 'From', a); p.set(key + 'To', b); }
+  }
   if (state.trip === 'round') {
-    if (!$('ret').value) return showMsg('귀국일을 선택해 주세요.', true);
+    if (!$('ret').value) return showMsg('돌아오는 날을 선택해 주세요.', true);
     p.set('return', $('ret').value);
   }
   $('go').disabled = true; $('go').textContent = '검색 중…';
@@ -170,7 +256,7 @@ function showMsg(text, isError) {
 function render({ routes, query }) {
   const priced = routes.filter((r) => r.tickets.length);
   if (!priced.length) {
-    $('out').innerHTML = '<p class="summary">해당 조건으로 수집된 가격이 없어요. 날짜를 "한 달"로 넓히거나 직항만 해제해 보세요.</p>';
+    $('out').innerHTML = '<p class="summary">해당 조건으로 수집된 가격이 없어요. 날짜를 "한 달"로 넓히거나, 시각 범위를 넓히거나, 직항만 해제해 보세요.</p>';
     return;
   }
   const min = Math.min(...priced.map((r) => r.tickets[0].price));
@@ -183,7 +269,7 @@ function render({ routes, query }) {
     if (!t) return `<div class="card"><div class="route">${r.fromName} → ${r.toName}<small>${r.from}–${r.to}</small></div>
       <p class="empty">수집된 가격 없음</p></div>`;
     const more = r.tickets.slice(1, 6).map((x) => `<li>
-        <span>${fmtDate(x.departAt)} · ${esc(airline(x.airline))}</span>
+        <span>${fmtDate(x.departAt)}${arrival(x).replace(' 도착', '')} · ${esc(airline(x.airline))}</span>
         ${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${won(x.price)}</a>` : `<span>${won(x.price)}</span>`}
       </li>`).join('');
     return `<div class="card ${isBest ? 'best' : ''}">
@@ -193,7 +279,7 @@ function render({ routes, query }) {
       <div class="diff">${isBest ? `${kind} 최저가` : `최저가보다 +${won(t.price - min)}`}</div>
       <div class="meta">
         ${esc(airline(t.airline))} ${esc(t.airline)}${esc(t.flightNumber)} · ${stops(t.transfers)}<br>
-        가는 날 ${fmtDate(t.departAt)}${t.returnAt ? `<br>오는 날 ${fmtDate(t.returnAt)}` : ''}
+        가는 날 ${fmtDate(t.departAt)}${arrival(t)}${t.returnAt ? `<br>오는 날 ${fmtDate(t.returnAt)}` : ''}
       </div>
       ${t.link ? `<a class="book" href="${esc(t.link)}" target="_blank" rel="noopener">예약 페이지 보기 →</a>` : ''}
       ${more ? `<details><summary>다른 항공편 ${r.tickets.slice(1, 6).length}개</summary><ul class="more">${more}</ul></details>` : ''}
