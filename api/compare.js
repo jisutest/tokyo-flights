@@ -2,7 +2,10 @@ import { getLivePrices, getMockPrices, searchUrl } from '../lib/flights.js';
 import { getSerpPrices } from '../lib/serpapi.js';
 import { parseRange } from '../lib/timefilter.js';
 
-const DATE_RE = /^\d{4}-\d{2}(-\d{2})?$/;
+// SerpApi deep_search는 응답이 느릴 수 있어 함수 실행 시간을 넉넉히 (Vercel)
+export const config = { maxDuration: 60 };
+
+const DATE_RE =/^\d{4}-\d{2}(-\d{2})?$/;
 
 // GET /api/compare?from=seoul|tokyo&depart=2026-12-20&return=2026-12-24&direct=1
 //   시각 범위(0~24시, 생략 = 전체):
