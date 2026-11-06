@@ -1,18 +1,20 @@
 import { getLivePrices, getMockPrices, searchUrl } from '../lib/flights.js';
 import { getSerpPrices } from '../lib/serpapi.js';
 import { parseRange } from '../lib/timefilter.js';
+import { cityOf } from '../lib/routes.js';
 
 // SerpApi deep_search는 응답이 느릴 수 있어 함수 실행 시간을 넉넉히 (Vercel)
 export const config = { maxDuration: 60 };
 
 const DATE_RE =/^\d{4}-\d{2}(-\d{2})?$/;
 
-// GET /api/compare?from=seoul|tokyo&depart=2026-12-20&return=2026-12-24&direct=1
+// GET /api/compare?from=seoul|tokyo&city=seoul|daegu&depart=2026-12-20&return=2026-12-24&direct=1
 //   시각 범위(0~24시, 생략 = 전체):
 //   가는 편 depFrom/depTo(출발) arrFrom/arrTo(도착), 오는 편 retDepFrom/retDepTo retArrFrom/retArrTo
 export default async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const dir = url.searchParams.get('from') === 'tokyo' ? 'tokyo' : 'seoul';
+  const city = url.searchParams.get('city') === 'daegu' ? 'daegu' : 'seoul'; // 한국 쪽 도시
   const departAt = url.searchParams.get('depart') || '';
   const returnAt = url.searchParams.get('return') || '';
   const direct = url.searchParams.get('direct') === '1';
@@ -29,13 +31,14 @@ export default async function handler(req, res) {
     return send(res, 400, { error: '돌아오는 날이 출발일보다 빠릅니다.' });
   }
 
-  const q = { dir, departAt, returnAt: returnAt || null, direct, depRange, arrRange, retDepRange, retArrRange };
+  const q = { dir, city, departAt, returnAt: returnAt || null, direct, depRange, arrRange, retDepRange, retArrRange };
   const token = process.env.TRAVELPAYOUTS_TOKEN;
   const marker = process.env.TRAVELPAYOUTS_MARKER;
 
   // 노선별 + 도시 단위 Aviasales 실시간 검색 링크 (캐시에 가격이 없을 때 바로 가볼 수 있게)
   const links = (routes) => routes.map((r) => ({ ...r, searchUrl: searchUrl(r.from, r.to, departAt, returnAt, marker) }));
-  const [cityFrom, cityTo] = dir === 'tokyo' ? ['TYO', 'SEL'] : ['SEL', 'TYO'];
+  const korea = cityOf(city).code;
+  const [cityFrom, cityTo] = dir === 'tokyo' ? ['TYO', korea] : [korea, 'TYO'];
   const citySearchUrl = searchUrl(cityFrom, cityTo, departAt, returnAt, marker);
 
   // 실시간 조회(SerpApi)는 날짜가 특정일일 때만 가능. 한 달 검색은 아래 캐시 데이터로.

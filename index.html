@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>도쿄 항공권 최저가</title>
-<meta name="description" content="김포·인천 ↔ 하네다·나리타 4개 노선 최저가 한눈에 비교">
+<meta name="description" content="김포·인천·대구 ↔ 하네다·나리타 노선 최저가 한눈에 비교">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 <style>
   :root {
@@ -131,9 +131,15 @@
   <form id="f">
     <!-- 1줄: 조건 -->
     <div class="row">
+      <div class="sec"><span class="sec-title">한국 공항</span>
+        <div class="seg" id="city">
+          <button type="button" data-v="seoul" class="on">서울</button>
+          <button type="button" data-v="daegu">대구</button>
+        </div>
+      </div>
       <div class="sec"><span class="sec-title">출발지</span>
         <div class="seg" id="dir">
-          <button type="button" data-v="seoul" class="on">서울 출발</button>
+          <button type="button" data-v="seoul" class="on" id="dirKorea">서울 출발</button>
           <button type="button" data-v="tokyo">도쿄 출발</button>
         </div>
       </div>
@@ -221,7 +227,12 @@
 const AIRLINES = { KE:'대한항공', OZ:'아시아나', '7C':'제주항공', LJ:'진에어', TW:'티웨이', BX:'에어부산', RS:'에어서울',
   ZE:'이스타항공', YP:'에어프레미아', JL:'JAL', NH:'ANA', MM:'피치항공', ZG:'ZIPAIR', GK:'젯스타재팬', BC:'스카이마크', HD:'에어두' };
 const $ = (id) => document.getElementById(id);
-const state = { dir: 'seoul', trip: 'oneway', unit: 'day' };
+const state = { dir: 'seoul', city: 'seoul', trip: 'oneway', unit: 'day' };
+// 한국 쪽 도시 (서버 lib/routes.js의 CITIES와 맞춤)
+const CITIES = {
+  seoul: { name: '서울', airports: '김포·인천', count: 4 },
+  daegu: { name: '대구', airports: '대구', count: 2 },
+};
 
 const won = (n) => n.toLocaleString('ko-KR') + '원';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -290,15 +301,19 @@ function seg(id, key, onChange) {
     onChange?.();
   });
 }
-seg('dir', 'dir', () => {
+// 도시·방향이 바뀌면 안내 문구와 구간 이름을 맞춤
+function updateRoutes() {
   const tokyo = state.dir === 'tokyo';
-  $('sub').textContent = tokyo
-    ? '하네다·나리타 → 김포·인천 4개 노선을 한 번에 비교해요.'
-    : '김포·인천 → 하네다·나리타 4개 노선을 한 번에 비교해요.';
-  $('outRoute').textContent = tokyo ? '도쿄 → 서울' : '서울 → 도쿄';
-  $('backRoute').textContent = tokyo ? '서울 → 도쿄' : '도쿄 → 서울';
+  const c = CITIES[state.city];
+  const [a, b] = tokyo ? ['하네다·나리타', c.airports] : [c.airports, '하네다·나리타'];
+  $('sub').textContent = `${a} → ${b} ${c.count}개 노선을 한 번에 비교해요.`;
+  $('dirKorea').textContent = `${c.name} 출발`;
+  $('outRoute').textContent = tokyo ? `도쿄 → ${c.name}` : `${c.name} → 도쿄`;
+  $('backRoute').textContent = tokyo ? `${c.name} → 도쿄` : `도쿄 → ${c.name}`;
   $('out').innerHTML = ''; showMsg('');
-});
+}
+seg('city', 'city', updateRoutes);
+seg('dir', 'dir', updateRoutes);
 seg('trip', 'trip', () => {
   const round = state.trip === 'round';
   $('ret').hidden = !round;
@@ -337,7 +352,7 @@ seg('unit', 'unit', () => {
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
   const round = state.trip === 'round';
-  const p = new URLSearchParams({ from: state.dir, depart: $('depart').value, direct: $('direct').checked ? '1' : '0' });
+  const p = new URLSearchParams({ from: state.dir, city: state.city, depart: $('depart').value, direct: $('direct').checked ? '1' : '0' });
   if (round) {
     if (!$('ret').value) return showMsg('오는 날을 선택해 주세요.', true);
     p.set('return', $('ret').value);
@@ -433,7 +448,8 @@ function emptyMessage({ query, sources, citySearchUrl, provider }) {
     else if (!total && provider === 'serpapi') why = 'Google 항공권에도 이 날짜·조건의 항공편이 없어요.';
     else if (!total) why = '이 사이트는 다른 사람들이 최근 검색한 가격(캐시)만 보여줘서, 이 날짜·방향은 아직 수집된 가격이 없어요.';
     else why = `수집된 가격 ${total}건이 있지만 선택한 조건(직항·시간)에 맞는 게 없어요.`;
-    if (query?.dir === 'tokyo' && !failed.length) why += ' 도쿄 출발은 서울 출발보다 수집된 가격이 적은 편이에요.';
+    if (query?.dir === 'tokyo' && !failed.length && provider !== 'serpapi') why += ' 도쿄 출발은 한국 출발보다 수집된 가격이 적은 편이에요.';
+    if (query?.city === 'daegu' && !failed.length) why += ' 대구–도쿄는 운항편이 적어 요일·날짜에 따라 항공편이 없을 수 있어요.';
   }
   const live = citySearchUrl
     ? `<br>${liveLink(citySearchUrl, 'cta')}<br><small style="color:var(--muted)">Aviasales는 지금 이 순간 항공사에 직접 조회해서 결과가 나와요.</small>`
