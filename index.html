@@ -372,6 +372,7 @@ $('f').addEventListener('submit', async (e) => {
     if (data.provider === 'serpapi') showMsg(data.query.returnAt
       ? '실시간 Google 항공권 가격(왕복 합계)이에요. 오는 편 항공편은 각 카드의 "Google 항공권에서 보기"에서 골라요.'
       : '실시간 Google 항공권 가격이에요.', false, 'info');
+    else if (data.supplement?.dates?.length) showMsg(`수집된(캐시) 가격이 적어서 ${data.supplement.dates.map(fmtDay).join(' · ')} 출발을 Google 항공권에서 실시간으로 조회해 채웠어요${data.supplement.added ? ` (+${data.supplement.added}건)` : ' (추가된 항공편 없음)'}. 다른 날짜는 "특정일"로 검색하세요.${data.query.returnAt?.length === 7 ? ' 왕복은 가는 날 4일 뒤 귀국 기준이에요.' : ''}`, false, 'info');
     else if (data.realtime && monthly) showMsg('"한 달" 검색은 실시간 조회가 안 돼서 수집된(캐시) 가격을 보여드려요. 실시간 가격은 "특정일"로 검색하세요.');
     else if (data.mock) showMsg('지금은 샘플 데이터예요. Vercel 환경변수에 SERPAPI_KEY(실시간) 또는 TRAVELPAYOUTS_TOKEN을 넣으면 실제 가격이 나와요.');
     else if (data.fallback === 'month') showMsg('고른 날짜로 수집된 가격이 없어서 같은 달의 다른 날짜 가격을 보여드려요. 날짜를 꼭 확인하세요. 고른 날짜 그대로 보려면 카드의 "Aviasales 실시간 검색"을 눌러 보세요.');

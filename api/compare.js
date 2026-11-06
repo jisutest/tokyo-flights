@@ -1,5 +1,5 @@
 import { getLivePrices, getMockPrices, searchUrl } from '../lib/flights.js';
-import { getSerpPrices } from '../lib/serpapi.js';
+import { getSerpPrices, getSerpMonthSample } from '../lib/serpapi.js';
 import { parseRange } from '../lib/timefilter.js';
 import { cityOf } from '../lib/routes.js';
 
@@ -45,6 +45,9 @@ export default async function handler(req, res) {
   const serpKey = process.env.SERPAPI_KEY;
   const exactDates = departAt.length === 10 && (!returnAt || returnAt.length === 10);
   const realtime = Boolean(serpKey);
+  // "한 달" 검색에서 캐시 가격이 적을 때 실시간으로 채울 날짜 수 (날짜 1개 = 크레딧 1개, 0이면 끔)
+  const samples = Math.max(0, Math.floor(Number(process.env.SERPAPI_MONTH_SAMPLES ?? 6)) || 0);
+  const canSample = Boolean(serpKey) && departAt.length === 7 && samples > 0;
 
   try {
     if (serpKey && exactDates) {
@@ -52,6 +55,11 @@ export default async function handler(req, res) {
       // 같은 검색은 Vercel CDN에 10분 캐시 (SerpApi 크레딧 절약)
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
       return send(res, 200, { mock: false, provider: 'serpapi', query: q, routes: links(routes), sources, citySearchUrl });
+    }
+    if (!token && canSample) {
+      const { routes, sources, dates } = await getSerpMonthSample(q, serpKey, samples);
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
+      return send(res, 200, { mock: false, provider: 'travelpayouts', realtime, query: q, routes: links(routes), sources, supplement: { dates, added: count(routes) }, citySearchUrl });
     }
     if (!token) {
       return send(res, 200, { mock: true, provider: 'mock', realtime, query: q, routes: links(getMockPrices(q)), citySearchUrl });
@@ -71,11 +79,25 @@ export default async function handler(req, res) {
       }
     }
 
+    // 한 달 검색인데 캐시 가격이 적으면(예: 대구) 그 달의 날짜 몇 개를 SerpApi로 실시간 조회해 합침
+    let supplement = null;
+    if (canSample && count(routes) < routes.length * 5) {
+      try {
+        const live = await getSerpMonthSample(q, serpKey, samples);
+        const before = count(routes);
+        routes = mergeRoutes(routes, live.routes);
+        sources = [...sources, ...live.sources];
+        supplement = { dates: live.dates, added: count(routes) - before };
+      } catch (err) {
+        sources = [...sources, { query: 'google_flights (한 달 보완)', error: String(err?.message || err) }];
+      }
+    }
+
     // Vercel CDN에 10분 캐시 (API 호출량 절약)
     res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600');
     // sources: 조회별 원본 건수/에러 (결과가 비었을 때 원인 확인용)
     // fallback: 'month'면 요청한 날짜가 아니라 같은 달 다른 날짜의 가격
-    return send(res, 200, { mock: false, provider: 'travelpayouts', realtime, query: q, routes: links(routes), sources, fallback, citySearchUrl });
+    return send(res, 200, { mock: false, provider: 'travelpayouts', realtime, query: q, routes: links(routes), sources, fallback, supplement, citySearchUrl });
   } catch (err) {
     console.error(err);
     return send(res, 502, {
@@ -83,6 +105,20 @@ export default async function handler(req, res) {
       detail: String(err?.message || err), // 예: "Travelpayouts 401" / "SerpApi: Invalid API key" → 키 문제
     });
   }
+}
+
+const count = (routes) => routes.reduce((n, r) => n + r.tickets.length, 0);
+
+// 캐시 가격 + 실시간 가격을 노선별로 합침 (같은 항공편·같은 출발 시각이면 싼 것 하나만)
+function mergeRoutes(cached, live) {
+  return cached.map((r) => {
+    const map = new Map();
+    for (const t of [...r.tickets, ...(live.find((x) => x.id === r.id)?.tickets || [])]) {
+      const key = `${t.airline}${t.flightNumber}|${String(t.departAt).slice(0, 16)}`;
+      if (!map.has(key) || t.price < map.get(key).price) map.set(key, t);
+    }
+    return { ...r, tickets: [...map.values()].sort((a, b) => a.price - b.price) };
+  });
 }
 
 function send(res, status, body) {
